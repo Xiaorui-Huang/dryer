@@ -24,11 +24,16 @@ class Duplicate:
 
 @dataclass(frozen=True)
 class Entry:
-    """A normalized form ready to compare. Forms are only compared within one language."""
+    """A normalized form ready to compare. Forms are only compared within one language.
+
+    `offset` is where the form starts in its file. It tells apart forms that share
+    lines; the line range is only for the report.
+    """
 
     language: str
     file: str
     start_line: int
     end_line: int
+    offset: int
     nodes: int
     fingerprints: frozenset[str]

@@ -395,7 +395,10 @@ def _skip_shebang(reader: Reader, text: str) -> None:
 
 
 def read_source(text: str) -> tuple[list, str | None]:
-    """Top-level forms, plus a warning if a later form could not be read."""
+    """Top-level forms, plus a warning if a later form could not be read.
+
+    Each form's `offset` is where reading it began in `text`.
+    """
 
     text = _strip_bom(text)
     reader = Reader(text)
@@ -405,12 +408,14 @@ def read_source(text: str) -> tuple[list, str | None]:
         reader.skip_ws()
         if reader.eof():
             return forms, None
+        offset = reader.i
         try:
             form = reader.read_form()
         except ReadError as exc:
             return forms, f"{exc.line}: {exc}"
         if form is None or isinstance(form, Splice):
             continue
+        form.offset = offset
         forms.append(form)
 
 

@@ -633,11 +633,19 @@ def test_end_line_uses_the_last_occupied_row():
     assert spans("python", source, "a.py") == [(1, 2)]
 
 
-def _entry(file: str, start: int, end: int, names: set[str], language: str = "python", nodes: int = 20):
-    return Entry(language, file, start, end, nodes, frozenset(names))
+def _entry(
+    file: str,
+    start: int,
+    end: int,
+    names: set[str],
+    language: str = "python",
+    nodes: int = 20,
+    offset: int = 0,
+):
+    return Entry(language, file, start, end, offset, nodes, frozenset(names))
 
 
-def test_the_same_span_is_not_a_pair():
+def test_the_same_form_is_not_a_pair():
     assert find_duplicates([
         _entry("a.py", 1, 4, {"q"}),
         _entry("a.py", 1, 4, {"q"}),
@@ -647,13 +655,39 @@ def test_the_same_span_is_not_a_pair():
         _entry("b.py", 1, 4, {"q"}),
     ], 0.5)) == 1
     assert len(find_duplicates([
-        _entry("a.py", 1, 5, {"q"}),
-        _entry("a.py", 3, 5, {"q"}),
+        _entry("a.py", 1, 1, {"q"}, offset=0),
+        _entry("a.py", 1, 1, {"q"}, offset=30),
     ], 0.5)) == 1
-    assert len(find_duplicates([
-        _entry("a.py", 1, 4, {"q"}),
-        _entry("a.py", 1, 8, {"q"}),
-    ], 0.5)) == 1
+
+
+_NESTED_RUST = """\
+fn outer() { impl S { fn inner(&self) -> i32 {
+    let a = self.x + 1;
+    let b = self.y * 2;
+    if a > b { a - b } else { b - a }
+} } }
+"""
+
+
+@pytest.mark.parametrize(
+    ("language", "file", "source"),
+    [
+        ("rust", "a.rs", "fn a() -> i32 { return 1 + 2; } fn b() -> i32 { return 3 + 4; }\n"),
+        ("typescript", "a.ts", "function a() { return 1 + 2; } function b() { return 3 + 4; }\n"),
+        ("typescript", "a.ts", "class A { a = () => { return 1 + 2; }; b = () => { return 3 + 4; } }\n"),
+        ("go", "a.go", "package p\nfunc a() int { return 1 + 2 }; func b() int { return 3 + 4 }\n"),
+        ("rust", "a.rs", _NESTED_RUST),
+    ],
+)
+def test_functions_that_share_a_line_range_are_a_pair(language, file, source):
+    entries = forms(language, source, file)
+    assert len(entries) == 2
+    assert len(find_duplicates(entries, 0.0)) == 1
+
+
+def test_a_function_extracted_twice_is_not_paired_with_itself():
+    source = "fn a() -> i32 { return 1 + 2; }\n"
+    assert find_duplicates(forms("rust", source, "a.rs") + forms("rust", source, "a.rs"), 0.0) == []
 
 
 def test_a_score_equal_to_the_threshold_is_kept():
@@ -695,7 +729,7 @@ def test_a_deep_expression_is_read():
 
 def test_threshold_zero_pairs_forms_that_share_no_fingerprint():
     def form(file: str, fingerprints: set[str]) -> Entry:
-        return Entry("python", file, 1, 5, 20, frozenset(fingerprints))
+        return Entry("python", file, 1, 5, 0, 20, frozenset(fingerprints))
 
     found = find_duplicates([form("a.py", {"x", "y"}), form("b.py", {"z"})], 0.0)
     assert [(item.left.file, item.right.file, item.score) for item in found] == [("a.py", "b.py", 0.0)]
@@ -703,8 +737,8 @@ def test_threshold_zero_pairs_forms_that_share_no_fingerprint():
 
 def test_a_match_is_found_whatever_size_order_the_forms_come_in():
     shared = {f"f{index}" for index in range(10)}
-    small = Entry("python", "small.py", 1, 5, 20, frozenset(shared))
-    large = Entry("python", "large.py", 1, 5, 20, frozenset(shared | {"extra"}))
+    small = Entry("python", "small.py", 1, 5, 0, 20, frozenset(shared))
+    large = Entry("python", "large.py", 1, 5, 0, 20, frozenset(shared | {"extra"}))
     for entries in ([small, large], [large, small]):
         found = find_duplicates(entries, 0.9)
         assert [round(item.score, 3) for item in found] == [0.909]

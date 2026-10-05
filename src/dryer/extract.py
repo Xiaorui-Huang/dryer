@@ -183,6 +183,7 @@ def _tree_entries(language: str, source: str, path: str, file: str) -> list[Entr
                 file=file,
                 start_line=start_line(node),
                 end_line=end_line(node),
+                offset=node.start_byte,
                 nodes=node_count(normalized),
                 fingerprints=fingerprints(normalized),
             )
@@ -203,6 +204,7 @@ def _clojure_entries(source: str, file: str) -> tuple[list[Entry], str | None]:
                 file=file,
                 start_line=form.line,
                 end_line=max_line(form),
+                offset=form.offset,
                 nodes=node_count(normalized),
                 fingerprints=fingerprints(normalized),
             )

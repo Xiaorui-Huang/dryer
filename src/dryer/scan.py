@@ -43,12 +43,10 @@ def scan_files(
     return entries, warnings
 
 
-def _same_span(left: Entry, right: Entry) -> bool:
+def _same_form(left: Entry, right: Entry) -> bool:
     if left.file != right.file:
         return False
-    if left.start_line != right.start_line:
-        return False
-    return left.end_line == right.end_line
+    return left.offset == right.offset
 
 
 def _duplicate_key(item: Duplicate):
@@ -103,7 +101,7 @@ def find_duplicates(entries: list[Entry], threshold: float) -> list[Duplicate]:
     for language, group in by_language.items():
         for index, other in sorted(_candidate_pairs(group, threshold)):
             left, right = group[index], group[other]
-            if _same_span(left, right):
+            if _same_form(left, right):
                 continue
             score = jaccard(left.fingerprints, right.fingerprints)
             if score < threshold:

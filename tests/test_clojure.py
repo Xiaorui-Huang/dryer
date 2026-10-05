@@ -347,3 +347,9 @@ def test_node_count_and_keyword_printing():
     assert repr(K("symbol")) == ":symbol"
     assert node_count(K("symbol")) == 1
     assert node_count([K("list"), K("symbol"), K("literal")]) == 4
+
+
+def test_two_forms_on_one_line_are_a_pair(tmp_path):
+    write_source(tmp_path, "a.clj", "(defn a [] (+ 1 2)) (defn b [] (+ 3 4))\n")
+    found = duplicates(tmp_path, min_lines=1, min_nodes=1, threshold=0.0)
+    assert len(found) == 1
