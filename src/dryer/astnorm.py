@@ -12,12 +12,17 @@ from __future__ import annotations
 from dryer.shape import K
 from dryer.treesitter import node_text
 
+# Comments, and the literal text around an interpolation: only the
+# interpolated code of a string counts.
 _SKIP = {
     "comment",
     "line_comment",
     "block_comment",
     "documentation_comment",
     "doc_comment",
+    "string_fragment",
+    "string_content",
+    "escape_sequence",
 }
 
 _IDENTIFIERS = {
