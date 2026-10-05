@@ -1,8 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from dryer.extract import entries_in_source
 from dryer.model import Entry
 from dryer.scan import _keep, find_duplicates, scan_files
+from dryer.shape import jaccard
 from dryer.treesitter import descendants, end_line, parse
 
 
@@ -369,6 +372,80 @@ def test_an_interpolated_string_is_not_a_plain_literal():
     found = find_duplicates(plain + interpolated, threshold=0.0)
     assert len(found) == 1
     assert found[0].score < 1.0
+
+
+_BODIES = {
+    "rust": ("a.rs", "fn f(x: T, y: T) {{\n    {}\n}}\n"),
+    "python": ("a.py", "def f(x, y):\n    {}\n"),
+    "typescript": ("a.ts", "function f(x, y) {{\n  {};\n}}\n"),
+    "go": ("a.go", "package demo\n\nfunc f(x int, y int, c chan int) {{\n\t{}\n}}\n"),
+}
+
+
+def _function(language: str, body: str) -> Entry:
+    file, template = _BODIES[language]
+    [entry] = forms(language, template.format(body), file)
+    return entry
+
+
+def _pair_score(language: str, left: str, right: str) -> float:
+    return jaccard(_function(language, left).fingerprints, _function(language, right).fingerprints)
+
+
+@pytest.mark.parametrize(
+    ("language", "left", "right"),
+    [
+        ("rust", "x..y", "x..=y"),
+        ("rust", 'format!("{}", approve(x))', 'format!("{}", reject(x))'),
+        ("rust", "assert!(x.approve())", "assert!(x.reject())"),
+        ("rust", 'format!("{}", vec![x])', 'format!("{}", dbg![x])'),
+        ("rust", 'println!("{}", x)', 'panic!("{}", x)'),
+        ("rust", 'std::println!("{}", x)', 'std::panic!("{}", x)'),
+        ("python", "return x in y", "return x is y"),
+        ("python", "return x not in y", "return x is not y"),
+        ("python", "return x in y", "return x not in y"),
+        ("python", "return x // y", "return x @ y"),
+        ("python", "x **= y", "x //= y"),
+        ("python", "x @= y", "x //= y"),
+        ("typescript", "return `${approve(x)}`", "return `${reject(x)}`"),
+        ("typescript", "return x in y", "return x instanceof y"),
+        ("typescript", "return typeof x", "return void x"),
+        ("typescript", "return delete x.a", "return typeof x.a"),
+        ("typescript", "x &&= y", "x ??= y"),
+        ("typescript", "x ||= y", "x **= y"),
+    ],
+)
+def test_a_different_operator_or_embedded_call_lowers_the_score(language, left, right):
+    assert _pair_score(language, left, right) < 1.0
+
+
+@pytest.mark.parametrize(
+    ("language", "left", "right"),
+    [
+        ("rust", "x..=y", "y..=x"),
+        ("rust", 'format!("left {}", approve(x))', 'format!("right {:?}", approve(y))'),
+        ("rust", "assert_eq!(x.len, y)", "assert_eq!(y.size, x)"),
+        ("python", "return x not in y", "return y not in x"),
+        ("python", 'return f"left {approve(x)}"', 'return f"right {approve(y)}"'),
+        ("typescript", "return typeof x", "return typeof y"),
+        ("typescript", "return `left ${approve(x)}`", "return `right ${approve(y)}`"),
+        ("go", "return x &^ y", "return y &^ x"),
+    ],
+)
+def test_renamed_locals_and_literal_text_still_match(language, left, right):
+    assert _pair_score(language, left, right) == 1.0
+
+
+@pytest.mark.parametrize(
+    ("body", "operator"),
+    [
+        ("_ = x &^ y", "&^"),
+        ("x &^= y", "&^="),
+        ("_ = <-c", "<-"),
+    ],
+)
+def test_a_go_operator_stays_in_the_fingerprint(body, operator):
+    assert f'[:symbol "{operator}"]' in _function("go", body).fingerprints
 
 
 def test_constructed_names_stay_in_the_fingerprint():

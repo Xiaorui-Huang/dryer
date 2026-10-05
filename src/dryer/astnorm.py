@@ -115,7 +115,13 @@ _OPERATORS = {
     ":=",
     "=>",
     "?",
+    "..",
+    "..=",
 }
+
+# The grammar names an expression's operator token in one of these fields. Any
+# token there stays, so an operator missing from _OPERATORS still counts.
+_OPERATOR_FIELDS = {"operator", "operators"}
 
 _CALLS = {
     "call",
@@ -123,6 +129,7 @@ _CALLS = {
     "method_invocation",
     "object_creation_expression",
     "new_expression",
+    "macro_invocation",
 }
 
 _ATTRIBUTES = {
@@ -139,7 +146,8 @@ _SCOPED = {
     "scoped_type_identifier",
 }
 
-_ARG_LISTS = {"argument_list", "arguments"}
+_ARG_LISTS = {"argument_list", "arguments", "token_tree"}
+_INTERPOLATIONS = {"interpolation", "template_substitution"}
 _TYPE_ARGS = {"type_arguments", "type_parameters"}
 
 _DATA: bytes = b""
@@ -161,11 +169,11 @@ _PENDING = object()
 
 
 def _is_literal(node) -> bool:
+    """A literal's text drops out. A string that interpolates code is not a literal."""
+
     if node.type not in _LITERALS:
         return False
-    if node.type == "string" and any(child.type == "interpolation" for child in node.children):
-        return False
-    return True
+    return not any(child.type in _INTERPOLATIONS for child in node.children)
 
 
 def _named_before_args(node):
@@ -204,6 +212,8 @@ def _try_leaf(node, mode: str, head: bool):
         return _callee_leaf(node)
     if mode == "path":
         return _PENDING
+    if mode == "operator":
+        return [K("symbol"), node.type]
     if node.type in _SKIP:
         return None
     if node.type in _OPERATORS:
@@ -211,6 +221,34 @@ def _try_leaf(node, mode: str, head: bool):
     if not node.is_named:
         return None
     return _named_leaf(node, head)
+
+
+def _called_in_tokens(children, index: int) -> bool:
+    """In a macro's token tree, `name(` is a call and `name!` is a macro.
+
+    A token tree always ends with its closing delimiter (tree-sitter inserts a
+    missing one), so an identifier always has a following token.
+    """
+
+    if children[index].type != "identifier":
+        return False
+    following = children[index + 1]
+    if following.type == "!":
+        return True
+    return following.type == "token_tree" and following.children[0].type == "("
+
+
+def _child_mode(node, children, index: int) -> str:
+    if node.field_name_for_child(index) in _OPERATOR_FIELDS:
+        return "operator"
+    if node.type == "token_tree" and _called_in_tokens(children, index):
+        return "callee"
+    return "norm"
+
+
+def _child_jobs(node):
+    children = node.children
+    return [(child, _child_mode(node, children, index), False) for index, child in enumerate(children)]
 
 
 def _call_jobs(node):
@@ -273,7 +311,7 @@ def _jobs(node, mode: str, head: bool):
         return _call_jobs(node)
     if node.type in _ATTRIBUTES:
         return _attr_jobs(node, head)
-    return [(child, "norm", False) for child in node.children]
+    return _child_jobs(node)
 
 
 def _name_value(name, head: bool, cache):
@@ -352,8 +390,8 @@ def _callee_value(node, cache):
 
 def _assemble_children(node, cache):
     children = []
-    for child in node.children:
-        norm = cache[(id(child), "norm", False)]
+    for child, mode, head in _child_jobs(node):
+        norm = cache[(id(child), mode, head)]
         if norm is not None:
             children.append(norm)
     return [K(node.type), *children]
