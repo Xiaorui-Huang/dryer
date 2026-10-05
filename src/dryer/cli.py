@@ -44,7 +44,8 @@ Options:
                                 May be repeated.
   --changed                     Compare added and modified source files from
                                 git status.
-  --threshold N                 Minimum similarity score, default 0.82.
+  --threshold N                 Minimum similarity score, from 0 to 1,
+                                default 0.82.
   --min-lines N                 Minimum source lines in a candidate form,
                                 default 4.
   --min-nodes N                 Minimum normalized syntax nodes, default 20.
@@ -95,9 +96,12 @@ def _take(args: list[str], index: int, option: str) -> str:
 
 def _number(value: str, option: str) -> float:
     try:
-        return float(value)
-    except ValueError as exc:
-        raise ValueError(f"{option} requires a number") from exc
+        number = float(value)
+    except ValueError:
+        number = float("nan")
+    if not 0 <= number <= 1:
+        raise ValueError(f"{option} requires a number from 0 to 1")
+    return number
 
 
 def _count(value: str, option: str) -> int:

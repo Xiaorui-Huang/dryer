@@ -1,9 +1,11 @@
+import re
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from dryer.cli import (
+    HELP,
     GitStatusError,
     _changed_files,
     _count,
@@ -297,6 +299,27 @@ def test_a_count_must_be_an_integer(capsys):
 def test_a_threshold_must_be_a_number(capsys):
     assert run(["--threshold", "nope"]) == 1
     assert "--threshold requires a number" in capsys.readouterr().err
+
+
+def test_every_number_option_in_the_help_rejects_values_that_are_not_finite():
+    numbers = re.findall(r"^  (--[\w-]+) N\b", HELP, re.MULTILINE)
+    assert {"--threshold", "--min-lines", "--min-nodes"} <= set(numbers)
+    past_largest_float = "1.79769313486231580794e308"
+    for option in numbers:
+        for value in ["nan", "inf", "+inf", "1e309", past_largest_float, "abc"]:
+            options = parse_args([option, value])
+            assert options.exit_code == 1, (option, value)
+            assert options.message.startswith(f"{option} requires "), (option, value)
+
+
+def test_a_threshold_is_a_number_from_0_to_1():
+    for value in ["1.0000000000000002", "1.5", "1.7976931348623157e308"]:
+        options = parse_args(["--threshold", value])
+        assert options.exit_code == 1, value
+        assert options.message.startswith("--threshold requires a number from 0 to 1\n"), value
+    assert parse_args(["--threshold", "0"]).threshold == 0.0
+    assert parse_args(["--threshold", "1"]).threshold == 1.0
+    assert parse_args(["--threshold", "1.0000000000000001"]).threshold == 1.0
 
 
 def test_parse_reads_the_process_arguments(monkeypatch):

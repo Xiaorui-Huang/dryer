@@ -61,7 +61,7 @@ The first run creates `.venv` and installs the tool. From a project root it walk
 ```
 
 ```text
---threshold N    Minimum structural similarity score, default 0.82
+--threshold N    Minimum structural similarity score, from 0 to 1, default 0.82
 --min-lines N    Minimum source lines in a candidate form, default 4
 --min-nodes N    Minimum normalized syntax nodes, default 20
 --format F       text or edn, default text
