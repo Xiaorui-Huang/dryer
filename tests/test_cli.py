@@ -208,7 +208,18 @@ def test_changed_files_reads_real_status(tmp_path):
     assert (tmp_path / "src/old.py").resolve() not in found
 
 
+OLD_REPORT = '{:candidates [{:score 1.0, :language "python", :left {:file "gone.py"}}]}\n'
+
+
+def _old_report(root: Path) -> Path:
+    path = root / ".metrics" / "dry.edn"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(OLD_REPORT, encoding="utf-8")
+    return path
+
+
 def test_changed_files_reports_git_failure(tmp_path, capsys):
+    report = _old_report(tmp_path)
     with pytest.raises(GitStatusError) as caught:
         _changed_files(tmp_path)
     assert caught.value.code == 128
@@ -220,6 +231,7 @@ def test_changed_files_reports_git_failure(tmp_path, capsys):
     assert code == 128
     assert "not a git repository" in captured.err
     assert "No source files" not in captured.out
+    assert report.read_text(encoding="utf-8") == OLD_REPORT
 
 
 def test_an_empty_git_error_uses_the_fallback_text(monkeypatch, tmp_path):
@@ -348,3 +360,20 @@ def test_a_second_report_replaces_the_snapshot(tmp_path, capsys):
     assert run(args) == 0
     assert run(args) == 0
     assert (tmp_path / ".metrics" / "dry.edn").read_text(encoding="utf-8") == "{:candidates []}\n"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [[], ["no-such-path"], ["--changed"]],
+    ids=["full", "filter", "changed"],
+)
+def test_a_run_with_no_source_files_empties_the_report(tmp_path, capsys, args):
+    _init_repo(tmp_path)
+    write_source(tmp_path, "src/app.py", "def alpha(xs):\n    return xs\n")
+    _commit(tmp_path, "base")
+    if not args:
+        (tmp_path / "src/app.py").unlink()
+    report = _old_report(tmp_path)
+    assert run(["--root", str(tmp_path), *args]) == 0
+    assert capsys.readouterr().out == "No source files to analyze.\n"
+    assert report.read_text(encoding="utf-8") == "{:candidates []}\n"

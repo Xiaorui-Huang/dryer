@@ -305,6 +305,7 @@ def run(argv: list[str] | None = None) -> int:
         return exc.code
     if not files:
         print("No source files to analyze.")
+        print(f"Wrote {write_metrics([], root)}", file=sys.stderr)
         return 0
 
     entries, warnings = scan_files(files, root, options.min_lines, options.min_nodes)
