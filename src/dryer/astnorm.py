@@ -71,6 +71,9 @@ _LITERALS = {
     "template_string",
     "regex",
     "regex_literal",
+    "real_literal",
+    "verbatim_string_literal",
+    "interpolated_string_expression",
 }
 
 _OPERATORS = {
@@ -135,6 +138,7 @@ _CALLS = {
     "object_creation_expression",
     "new_expression",
     "macro_invocation",
+    "invocation_expression",
 }
 
 _ATTRIBUTES = {
@@ -143,15 +147,24 @@ _ATTRIBUTES = {
     "selector_expression",
     "field_access",
     "field_expression",
+    "member_access_expression",
+    "conditional_access_expression",
+    "member_binding_expression",
 }
 
+# Read as a path when called or constructed, so each name in it stays.
 _SCOPED = {
     "qualified_identifier",
     "scoped_identifier",
     "scoped_type_identifier",
+    "generic_type",
+    "qualified_name",
+    "generic_name",
 }
 
-_ARG_LISTS = {"argument_list", "arguments", "token_tree"}
+# What follows the callee: the argument list, and C#'s object initializer, as in
+# `new Foo(x) { A = 1 }` and `new Foo { A = 1 }`.
+_CALL_TAILS = {"argument_list", "arguments", "token_tree", "initializer_expression"}
 _INTERPOLATIONS = {"interpolation", "template_substitution"}
 _TYPE_ARGS = {"type_arguments", "type_parameters"}
 
@@ -182,12 +195,13 @@ def _is_literal(node) -> bool:
 
 
 def _named_before_args(node):
-    incoming = []
-    for child in node.named_children:
-        if child.type in _ARG_LISTS:
-            return incoming, child
-        incoming.append(child)
-    return incoming, None
+    """The callee's parts, and the argument list and initializer that follow."""
+
+    named = node.named_children
+    for index, child in enumerate(named):
+        if child.type in _CALL_TAILS:
+            return named[:index], [item for item in named[index:] if item.type in _CALL_TAILS]
+    return named, []
 
 
 def _without_type_args(nodes):
@@ -265,8 +279,7 @@ def _call_jobs(node):
         jobs.extend((child, "norm", False) for child in receivers)
         jobs.append((callee, "callee", False))
     jobs.extend((child, "norm", False) for child in type_args)
-    if args is not None:
-        jobs.append((args, "norm", False))
+    jobs.extend((child, "norm", False) for child in args)
     return jobs
 
 
@@ -290,7 +303,7 @@ def _path_jobs(node):
     for child in node.named_children:
         if child.type in _IDENTIFIERS:
             continue
-        if child.type in _SCOPED or child.type == "generic_type":
+        if child.type in _SCOPED:
             jobs.append((child, "path", False))
         else:
             jobs.append((child, "norm", False))
@@ -300,7 +313,7 @@ def _path_jobs(node):
 def _callee_jobs(node):
     if node.type in _ATTRIBUTES:
         return _attr_jobs(node, True)
-    if node.type in _SCOPED or node.type == "generic_type":
+    if node.type in _SCOPED:
         return _path_jobs(node)
     return [(node, "norm", True)]
 
@@ -342,12 +355,8 @@ def _assemble_call(node, cache):
             if norm is not None:
                 out.append(norm)
         out.append(cache[(id(callee), "callee", False)])
-    for child in type_args:
+    for child in [*type_args, *args]:
         norm = cache[(id(child), "norm", False)]
-        if norm is not None:
-            out.append(norm)
-    if args is not None:
-        norm = cache[(id(args), "norm", False)]
         if norm is not None:
             out.append(norm)
     return out
@@ -376,7 +385,7 @@ def _assemble_path(node, cache):
     for child in node.named_children:
         if child.type in _IDENTIFIERS:
             parts.append([K("symbol"), _text(child)])
-        elif child.type in _SCOPED or child.type == "generic_type":
+        elif child.type in _SCOPED:
             parts.append(cache[(id(child), "path", False)])
         else:
             norm = cache[(id(child), "norm", False)]
@@ -388,7 +397,7 @@ def _assemble_path(node, cache):
 def _callee_value(node, cache):
     if node.type in _ATTRIBUTES:
         return _assemble_attr(node, True, cache)
-    if node.type in _SCOPED or node.type == "generic_type":
+    if node.type in _SCOPED:
         return _assemble_path(node, cache)
     return cache[(id(node), "norm", True)]
 

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from dryer.extract import entries_in_source
-from dryer.model import Entry
+from dryer.model import Entry, Span
 from dryer.scan import _keep, find_duplicates, scan_files
 from dryer.shape import jaccard
 from dryer.treesitter import descendants, end_line, parse
@@ -114,6 +114,28 @@ pub fn beta(items: Vec<i32>) -> Vec<i32> {
 }
 """
 
+CS_LEFT = """\
+class Left
+{
+    int[] Alpha(int[] xs)
+    {
+        var ys = Filter(xs, odd);
+        return Map(ys, inc);
+    }
+}
+"""
+
+CS_RIGHT = """\
+class Right
+{
+    int[] Beta(int[] items)
+    {
+        var kept = Filter(items, even);
+        return Map(kept, dec);
+    }
+}
+"""
+
 
 def test_each_language_matches_renamed_locals(tmp_path):
     samples = {
@@ -129,6 +151,8 @@ def test_each_language_matches_renamed_locals(tmp_path):
         "right.tsx": TSX_RIGHT,
         "left.rs": RUST_LEFT,
         "right.rs": RUST_RIGHT,
+        "left.cs": CS_LEFT,
+        "right.cs": CS_RIGHT,
     }
     for name, source in samples.items():
         write_source(tmp_path, name, source)
@@ -136,7 +160,7 @@ def test_each_language_matches_renamed_locals(tmp_path):
     by_language = {}
     for item in found:
         by_language.setdefault(item.language, []).append(item)
-    assert set(by_language) == {"java", "go", "python", "typescript", "rust"}
+    assert set(by_language) == {"java", "go", "python", "typescript", "rust", "csharp"}
     assert [(item.left.file, item.right.file) for item in by_language["typescript"]] == [
         ("left.ts", "right.ts"),
         ("left.tsx", "right.tsx"),
@@ -144,6 +168,41 @@ def test_each_language_matches_renamed_locals(tmp_path):
     for language, group in by_language.items():
         assert all(item.score == 1.0 for item in group), language
 
+
+def test_an_unrelated_csharp_method_pairs_with_neither_copy(tmp_path):
+    write_source(tmp_path, "Left.cs", CS_LEFT)
+    write_source(tmp_path, "Right.cs", CS_RIGHT)
+    write_source(
+        tmp_path,
+        "Other.cs",
+        """\
+class Other
+{
+    void Gamma(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+        Console.WriteLine(path);
+    }
+}
+""",
+    )
+    files = sorted(tmp_path.glob("*.cs"))
+    entries, warnings = scan_files(files, tmp_path, min_lines=1, min_nodes=1)
+    assert warnings == []
+    found = find_duplicates(entries, threshold=0.82)
+    assert [(item.left.file, item.right.file, item.score) for item in found] == [
+        ("Left.cs", "Right.cs", 1.0)
+    ]
+
+def test_a_csharp_file_with_a_byte_order_mark_and_crlf_still_pairs(tmp_path):
+    (tmp_path / "Left.cs").write_bytes(b"\xef\xbb\xbf" + CS_LEFT.replace("\n", "\r\n").encode("utf-8"))
+    write_source(tmp_path, "Right.cs", CS_RIGHT)
+    assert [(item.left, item.right, item.score) for item in pairs(tmp_path)] == [
+        (Span("Left.cs", 3, 7), Span("Right.cs", 3, 7), 1.0)
+    ]
 
 def test_different_callee_is_not_the_same_structure(tmp_path):
     write_source(
@@ -379,6 +438,7 @@ _BODIES = {
     "python": ("a.py", "def f(x, y):\n    {}\n"),
     "typescript": ("a.ts", "function f(x, y) {{\n  {};\n}}\n"),
     "go": ("a.go", "package demo\n\nfunc f(x int, y int, c chan int) {{\n\t{}\n}}\n"),
+    "csharp": ("a.cs", "class C {{\n  object f(object x, object y) {{\n    {}\n  }}\n}}\n"),
 }
 
 
@@ -413,6 +473,19 @@ def _pair_score(language: str, left: str, right: str) -> float:
         ("typescript", "return delete x.a", "return typeof x.a"),
         ("typescript", "x &&= y", "x ??= y"),
         ("typescript", "x ||= y", "x **= y"),
+        ("csharp", "return x.Filter(y);", "return x.Select(y);"),
+        ("csharp", "return Console.WriteLine(x);", "return Console.Write(x);"),
+        ("csharp", "return this.Approve(x);", "return this.Reject(x);"),
+        ("csharp", "return base.Approve(x);", "return base.Reject(x);"),
+        ("csharp", "return x?.Approve();", "return x?.Reject();"),
+        ("csharp", "return x?.A.Approve();", "return x?.A.Reject();"),
+        ("csharp", "return Approve<int>(x);", "return Reject<int>(x);"),
+        ("csharp", "return Outer.Approve<int>(x);", "return Outer.Reject<int>(x);"),
+        ("csharp", "return new List<int>();", "return new HashSet<int>();"),
+        ("csharp", "return new System.Text.StringBuilder();", "return new System.IO.StringWriter();"),
+        ("csharp", "return new Foo { A = 1 };", "return new Bar { A = 1 };"),
+        ("csharp", "return new Foo(x) { A = Approve(x) };", "return new Foo(x) { A = Reject(x) };"),
+        ("csharp", 'return $"{Approve(x)}";', 'return $"{Reject(x)}";'),
     ],
 )
 def test_a_different_operator_or_embedded_call_lowers_the_score(language, left, right):
@@ -434,6 +507,14 @@ def test_a_different_operator_or_embedded_call_lowers_the_score(language, left, 
         ("python", 'return f"left {approve(x)}"', 'return f"{approve(y)}"'),
         ("python", 'return f"a\\n{approve(x)}"', 'return f"a{approve(y)}"'),
         ("go", "return x &^ y", "return y &^ x"),
+        ("csharp", "return x.Filter(y);", "return y.Filter(x);"),
+        ("csharp", "return x.Length;", "return y.Count;"),
+        ("csharp", "return x?.Length;", "return y?.Count;"),
+        ("csharp", "return 1;", "return 2.5;"),
+        ("csharp", 'return "a";', 'return @"b";'),
+        ("csharp", 'return $"t";', 'return "t";'),
+        ("csharp", 'return $"left {Approve(x)}";', 'return $"right {Approve(y)}";'),
+        ("csharp", "return new Foo { A = 1 };", "return new Foo { B = 2 };"),
     ],
 )
 def test_renamed_locals_and_literal_text_still_match(language, left, right):
@@ -580,6 +661,84 @@ mod tests {
         "a.rs",
     ) == [(3, 5), (8, 10)]
 
+
+_CSHARP_MEMBERS = """\
+namespace Demo;
+
+public abstract class Board
+{
+    public Board(int start)
+    {
+        total = start;
+    }
+    ~Board()
+    {
+        Dispose();
+    }
+    public abstract void Declared();
+    public partial void Later();
+    public int Alpha(int[] xs)
+    {
+        int Local(int q) { return q + 1; }
+        Func<int, int> f = x => { return x * 2; };
+        return Local(xs.Length) + f(1);
+    }
+    public int Beta() => total + 1;
+    public int Auto { get; set; }
+    public int Count => total;
+    public int Kept
+    {
+        get { return total; }
+        set { total = value; }
+    }
+    public int this[int i] => items[i];
+    public static Board operator +(Board a, Board b) { return a; }
+    public static implicit operator int(Board b) => b.total;
+    public event EventHandler Changed
+    {
+        add { handlers += value; }
+        remove { handlers -= value; }
+    }
+}
+
+public interface IShape
+{
+    double Area();
+    double Twice() { return Area() * 2; }
+}
+
+public record Point(int X, int Y)
+{
+    public int Sum() { return X + Y; }
+}
+
+public struct Cell
+{
+    public int Value() { return 1; }
+}
+"""
+
+
+def test_csharp_keeps_members_that_have_a_body():
+    """Local functions and lambdas stay in the member that holds them."""
+
+    assert spans("csharp", _CSHARP_MEMBERS, "a.cs") == [
+        (5, 8),
+        (9, 12),
+        (15, 20),
+        (21, 21),
+        (23, 23),
+        (26, 26),
+        (27, 27),
+        (29, 29),
+        (30, 30),
+        (31, 31),
+        (34, 34),
+        (35, 35),
+        (42, 42),
+        (47, 47),
+        (52, 52),
+    ]
 
 def test_typescript_keeps_methods_and_skips_nested_functions():
     assert spans(
