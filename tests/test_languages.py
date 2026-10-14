@@ -486,6 +486,8 @@ def _pair_score(language: str, left: str, right: str) -> float:
         ("csharp", "return new Foo { A = 1 };", "return new Bar { A = 1 };"),
         ("csharp", "return new Foo(x) { A = Approve(x) };", "return new Foo(x) { A = Reject(x) };"),
         ("csharp", 'return $"{Approve(x)}";', 'return $"{Reject(x)}";'),
+        ("csharp", "return new global::Foo();", "return new global::Bar();"),
+        ("csharp", "return new Alias::Foo();", "return new Alias::Bar();"),
     ],
 )
 def test_a_different_operator_or_embedded_call_lowers_the_score(language, left, right):
@@ -519,6 +521,20 @@ def test_a_different_operator_or_embedded_call_lowers_the_score(language, left, 
 )
 def test_renamed_locals_and_literal_text_still_match(language, left, right):
     assert _pair_score(language, left, right) == 1.0
+
+
+@pytest.mark.parametrize(
+    ("language", "commented", "plain"),
+    [
+        ("rust", "foo /* c */ (x)", "foo(x)"),
+        ("typescript", "return foo /* c */ (x)", "return foo(x)"),
+        ("go", "_ = foo /* c */ (x)", "_ = foo(x)"),
+        ("csharp", "return Foo /* c */ (x);", "return Foo(x);"),
+        ("csharp", "return x.Foo /* c */ (y);", "return x.Foo(y);"),
+    ],
+)
+def test_a_comment_between_a_callee_and_its_arguments_is_skipped(language, commented, plain):
+    assert _pair_score(language, commented, plain) == 1.0
 
 
 @pytest.mark.parametrize(

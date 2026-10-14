@@ -103,7 +103,7 @@ DUPLICATE score=0.89
 | Python | functions and methods | functions nested inside another function |
 | C# | methods, constructors, destructors, operators, and accessors with a body; properties and indexers with their own `=>` body | bodiless members, test projects, and local functions and lambdas, which stay inside their member |
 
-A C# test project is a folder whose name ends in `Tests` or has a dot-separated part `Test` or `Tests`, such as `App.Tests`, `App.UnitTests`, or `App.Test.Unit`. A project whose nearest `.csproj` sets `<IsTestProject>true</IsTestProject>`, or has a PackageReference to Microsoft.NET.Test.Sdk, NUnit, xunit, MSTest, or Microsoft.Testing.Platform, is one too. Its `.cs` files are skipped unless you name them. This is the rule skillflow's measure uses.
+A `.cs` file's project is the nearest folder at or above it that holds a `.csproj`. The project is a test project when its folder's name ends in `Tests` or has a dot-separated part `Test` or `Tests`, such as `App.Tests`, `App.UnitTests`, or `App.Test.Unit`. It is one too when its `.csproj` sets `<IsTestProject>true</IsTestProject>`, uses the `MSTest.Sdk` project SDK, or has a PackageReference to Microsoft.NET.Test.Sdk, NUnit, xunit, xunit.v3, MSTest, or MSTest.TestFramework. A test project's `.cs` files are skipped unless you name them, and so are those in any C# project's `bin/` and `obj/`. This is the rule crapper and skillflow's measure use.
 
 Clojure reader conditionals keep the `:clj` branch, as dry4clj does. Syntax-quote is kept as a `syntax-quote` form rather than expanded.
 

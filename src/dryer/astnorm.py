@@ -159,6 +159,7 @@ _SCOPED = {
     "scoped_type_identifier",
     "generic_type",
     "qualified_name",
+    "alias_qualified_name",
     "generic_name",
 }
 
@@ -195,9 +196,10 @@ def _is_literal(node) -> bool:
 
 
 def _named_before_args(node):
-    """The callee's parts, and the argument list and initializer that follow."""
+    """The callee's parts, and the argument list and initializer that follow.
+    A comment among them, as in `foo /* c */ (x)`, is no part."""
 
-    named = node.named_children
+    named = [child for child in node.named_children if child.type not in _SKIP]
     for index, child in enumerate(named):
         if child.type in _CALL_TAILS:
             return named[:index], [item for item in named[index:] if item.type in _CALL_TAILS]
