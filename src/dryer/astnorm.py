@@ -21,6 +21,7 @@ _SKIP = {
 }
 
 _IDENTIFIERS = {
+    "namespace_identifier",
     "identifier",
     "type_identifier",
     "field_identifier",
@@ -31,6 +32,9 @@ _IDENTIFIERS = {
 }
 
 _LITERALS = {
+    "number_literal",
+    "concatenated_string",
+    "nullptr",
     "string",
     "string_literal",
     "interpreted_string_literal",
@@ -130,6 +134,7 @@ _ATTRIBUTES = {
 }
 
 _SCOPED = {
+    "qualified_identifier",
     "scoped_identifier",
     "scoped_type_identifier",
 }

@@ -8,6 +8,11 @@ import os
 from pathlib import Path
 
 EXTENSIONS = {
+    ".c": "c",
+    **dict.fromkeys(
+        (".h", ".cc", ".cpp", ".cxx", ".c++", ".C", ".hpp", ".hh",
+         ".hxx", ".h++", ".H", ".ipp", ".inl", ".tcc"), "cpp",
+    ),
     ".clj": "clojure",
     ".cljc": "clojure",
     ".cljs": "clojure",
@@ -54,9 +59,17 @@ def language_of(path: str | Path) -> str | None:
     return EXTENSIONS.get(file_path.suffix)
 
 
+def _native_test(file_path: Path) -> bool:
+    return language_of(file_path) in {"c", "cpp"} and (
+        file_path.stem.startswith("test_") or file_path.stem.endswith(("_test", "_tests"))
+    )
+
+
 def is_test_file(path: str | Path) -> bool:
     file_path = Path(path)
     name = file_path.name
+    if _native_test(file_path):
+        return True
     if name.endswith("_test.go"):
         return True
     if name.endswith(("_test.clj", "_test.cljc", "_test.cljs", "_test.cljd", "_test.bb")):

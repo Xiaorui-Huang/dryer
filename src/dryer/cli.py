@@ -30,7 +30,11 @@ those structural fingerprints, the same score as dry4clj.
 Prints a report and writes .metrics/dry.edn.
 
 Languages: Clojure (.clj .cljc .cljs .cljd .bb), Java (.java), Go (.go),
-TypeScript (.ts .tsx .mts .cts), Rust (.rs), Python (.py).
+TypeScript (.ts .tsx .mts .cts), Rust (.rs), Python (.py), C (.c),
+C++ (.h .cpp .cc .cxx .C .hpp .hh .hxx .H .ipp .inl .tcc).
+
+C/C++: сравниваются определения функций и методов, включая шаблонные
+и встроенные в заголовки. Заголовки .h разбираются грамматикой C++.
 
 Options:
   -h, --help                    Print this help and exit.

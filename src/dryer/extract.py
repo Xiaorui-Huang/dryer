@@ -143,7 +143,23 @@ def _rust_nodes(data: bytes, root) -> list:
     return found
 
 
+def _native_nodes(data: bytes, root) -> list:
+    """Только определения; лямбды и локальные классы остаются внутри функции."""
+
+    found = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type == "function_definition":
+            found.append(node)
+            continue
+        stack.extend(reversed(node.children))
+    return found
+
+
 _PICKERS = {
+    "c": ("c", _native_nodes),
+    "cpp": ("cpp", _native_nodes),
     "java": ("java", _java_nodes),
     "go": ("go", _go_nodes),
     "python": ("python", _python_nodes),
