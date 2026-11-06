@@ -610,3 +610,20 @@ def test_a_deep_expression_is_read():
     entries, warning = entries_in_source("clojure", f"(defn place [] {nested})\n", "app.clj", "app.clj")
     assert warning is None
     assert entries
+
+
+def test_threshold_zero_pairs_forms_that_share_no_fingerprint():
+    def form(file: str, fingerprints: set[str]) -> Entry:
+        return Entry("python", file, 1, 5, 20, frozenset(fingerprints))
+
+    found = find_duplicates([form("a.py", {"x", "y"}), form("b.py", {"z"})], 0.0)
+    assert [(item.left.file, item.right.file, item.score) for item in found] == [("a.py", "b.py", 0.0)]
+
+
+def test_a_match_is_found_whatever_size_order_the_forms_come_in():
+    shared = {f"f{index}" for index in range(10)}
+    small = Entry("python", "small.py", 1, 5, 20, frozenset(shared))
+    large = Entry("python", "large.py", 1, 5, 20, frozenset(shared | {"extra"}))
+    for entries in ([small, large], [large, small]):
+        found = find_duplicates(entries, 0.9)
+        assert [round(item.score, 3) for item in found] == [0.909]
