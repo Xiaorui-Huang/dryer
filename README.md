@@ -43,6 +43,27 @@ What stays is the call or method name, the operator, and the shape of the tree. 
 
 ## Run
 
+### User-level installation
+
+With [uv](https://docs.astral.sh/uv/) installed, run these from this fork's
+checkout to install its command, rather than an upstream package:
+
+```text
+uv tool install .
+uv tool update-shell
+```
+
+Restart the shell if needed. After updating the checkout, run
+`uv tool install --force --no-cache .` from it to replace the installed snapshot.
+`uv tool uninstall dryer` removes the command. Windows and each WSL distro
+need separate installations; build from a shared checkout sequentially, not
+in multiple environments at once. Check `dryer --help`, the installed version,
+language support, exclusions, and side effects before a run.
+
+The tool replaces its metrics file on a successful run. Preserve any report
+you need first. State the scope first. For branch checks, `--changed-since <ref> --against-repo`
+finds matches between selected files and unchanged source.
+
 ```bash
 ./dryer
 ```
