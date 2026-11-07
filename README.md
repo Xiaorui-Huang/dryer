@@ -55,10 +55,24 @@ The first run creates `.venv` and installs the tool. On Windows, run `dryer.cmd`
 ```bash
 ./dryer src/demo src/ui          # these files and trees
 ./dryer --changed                # git additions and edits
+./dryer --changed-since origin/main  # branch commits and working edits
+./dryer --changed-since origin/main --against-repo
 ./dryer billing                  # path fragment
 ./dryer --threshold 0.9 src
 ./dryer --edn --min-lines 3 src
 ```
+
+Selection options choose whole files, not changed lines. By default, only
+selected files are compared with each other. `--changed-since <ref>` uses the
+merge base with HEAD, plus staged/unstaged edits and untracked source files;
+it excludes deletions and commits only on the target. It requires an explicit
+ref and cannot be combined with `--changed`. No PR or default branch is inferred.
+
+`--against-repo` adds all discoverable source files under `--root` to the
+comparison, but reports only pairs touching a selected file. Explicit paths,
+filters, and `--source-root` select the files of interest, not the repository
+comparison pool. Existing test/vendor/build exclusions still apply. With no
+selected files, the report is empty. Output formats and thresholds are unchanged.
 
 ```text
 --threshold N    Minimum structural similarity score, from 0 to 1, default 0.82

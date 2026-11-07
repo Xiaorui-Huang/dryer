@@ -403,7 +403,7 @@ def test_an_empty_git_error_uses_the_fallback_text(monkeypatch, tmp_path):
         return subprocess.CompletedProcess(args, 128, b"", b"   \n")
 
     monkeypatch.setattr("dryer.cli.subprocess.run", fail)
-    with pytest.raises(GitStatusError, match="git status failed") as caught:
+    with pytest.raises(GitStatusError, match="git rev-parse failed") as caught:
         _changed_files(tmp_path)
     assert caught.value.code == 128
 

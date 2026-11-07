@@ -44,6 +44,12 @@ Options:
                                 May be repeated.
   --changed                     Compare added and modified source files from
                                 git status.
+  --changed-since <ref>         Select files changed since the merge base of
+                                <ref> and HEAD, including working edits and
+                                untracked files. Requires an explicit ref.
+  --against-repo               Compare selected files against all source files
+                                under --root; report only pairs touching a
+                                selected file. Default: selected files only.
   --threshold N                 Minimum similarity score, from 0 to 1,
                                 default 0.82.
   --min-lines N                 Minimum source lines in a candidate form,
@@ -92,6 +98,8 @@ class Options:
     min_nodes: int = 20
     format: str = "text"
     changed: bool = False
+    changed_since: str | None = None
+    against_repo: bool = False
 
 
 def _take(args: list[str], index: int, option: str) -> str:
@@ -165,12 +173,26 @@ def parse_args(argv: list[str] | None = None) -> Options:
                 options.changed = True
                 index += 1
                 continue
+            if arg == "--changed-since":
+                options.changed_since = _take(args, index, arg)
+                index += 2
+                continue
+            if arg == "--against-repo":
+                options.against_repo = True
+                index += 1
+                continue
             if arg.startswith("-"):
                 raise ValueError(f"Unknown option: {arg}")
             options.positionals.append(arg)
             index += 1
     except ValueError as exc:
         return Options(action="help", message=f"{exc}\n\n{HELP}", exit_code=1)
+    if options.changed and options.changed_since:
+        return Options(
+            action="help",
+            message=f"--changed cannot be combined with --changed-since\n\n{HELP}",
+            exit_code=1,
+        )
     if options.format not in {"text", "edn"}:
         return Options(
             action="format",
@@ -181,7 +203,7 @@ def parse_args(argv: list[str] | None = None) -> Options:
 
 
 class GitStatusError(Exception):
-    """git status could not be read. `code` is git's own status."""
+    """Git could not describe the selected files. `code` is git's own status."""
 
     def __init__(self, code: int, message: str):
         super().__init__(message)
@@ -197,7 +219,7 @@ def _git(root: Path, *args: str) -> bytes:
         check=False,
     )
     if result.returncode != 0:
-        message = os.fsdecode(result.stderr).strip() or "git status failed"
+        message = os.fsdecode(result.stderr).strip() or f"git {args[0]} failed"
         raise GitStatusError(result.returncode, message)
     return result.stdout
 
@@ -230,6 +252,30 @@ def _changed_files(root: Path) -> list[Path]:
             continue
         found.append(path)
     return found
+
+
+def _files_since(root: Path, ref: str) -> list[Path]:
+    """Branch commits and working edits, excluding changes only on the target."""
+
+    top = Path(os.fsdecode(_git(root, "rev-parse", "--show-toplevel")).strip())
+    base = os.fsdecode(_git(root, "merge-base", ref, "HEAD")).strip()
+    changed = _git(
+        root, "diff", "--name-only", "-z", "--no-renames",
+        "--diff-filter=d", base, "--", ".",
+    )
+    untracked = _git(
+        root, "ls-files", "-z", "--others", "--exclude-standard",
+        "--full-name", "--", ".",
+    )
+    limit = root.resolve()
+    paths = {
+        (top / os.fsdecode(name)).resolve()
+        for name in (changed + untracked).split(b"\0") if name
+    }
+    return sorted(
+        (path for path in paths if path.is_file() and path.is_relative_to(limit)),
+        key=lambda path: path.as_posix(),
+    )
 
 
 def _positionals(root: Path, args: list[str]) -> tuple[list[Path], list[str]]:
@@ -277,6 +323,8 @@ def _explicit_files(existing: list[Path]) -> list[Path]:
 def _selected(options: Options, root: Path, existing: list[Path]) -> list[Path]:
     if options.changed:
         return _changed_source(root)
+    if options.changed_since:
+        return [path for path in _files_since(root, options.changed_since) if _tracked_source(path, root)]
     if options.source_roots:
         return iter_source_files([(root / path).resolve() for path in options.source_roots])
     if existing:
@@ -318,10 +366,23 @@ def run(argv: list[str] | None = None) -> int:
         print(f"Wrote {write_metrics([], root)}", file=sys.stderr)
         return 0
 
-    entries, warnings = scan_files(files, root, options.min_lines, options.min_nodes)
+    comparison_files = files
+    if options.against_repo:
+        comparison_files = sorted(
+            set(files) | {path.resolve() for path in iter_source_files([root])},
+            key=lambda path: path.as_posix(),
+        )
+    entries, warnings = scan_files(comparison_files, root, options.min_lines, options.min_nodes)
     for warning in warnings:
         print(f"dryer: {warning}", file=sys.stderr)
     candidates = find_duplicates(entries, options.threshold)
+    if options.against_repo:
+        selected = set(files)
+        candidates = [
+            candidate for candidate in candidates
+            if (root / candidate.left.file).resolve() in selected
+            or (root / candidate.right.file).resolve() in selected
+        ]
     metrics = write_metrics(candidates, root)
     if options.format == "edn":
         print(render_edn(candidates), end="")
