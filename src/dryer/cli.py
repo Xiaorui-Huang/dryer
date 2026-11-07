@@ -33,8 +33,8 @@ Languages: Clojure (.clj .cljc .cljs .cljd .bb), Java (.java), Go (.go),
 TypeScript (.ts .tsx .mts .cts), Rust (.rs), Python (.py), C (.c),
 C++ (.h .cpp .cc .cxx .C .hpp .hh .hxx .H .ipp .inl .tcc).
 
-C/C++: сравниваются определения функций и методов, включая шаблонные
-и встроенные в заголовки. Заголовки .h разбираются грамматикой C++.
+C/C++: compares function and method definitions, including templates
+and those inline in headers. .h headers are parsed with the C++ grammar.
 
 Options:
   -h, --help                    Print this help and exit.
@@ -326,4 +326,7 @@ def run(argv: list[str] | None = None) -> int:
 
 
 def main(argv: list[str] | None = None) -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     sys.exit(run(argv))

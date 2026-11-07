@@ -114,27 +114,27 @@ python3 -m venv .venv
 .venv/bin/pytest
 ```
 
-## Поддержка C/C++ в этом форке
+## C/C++ support in this fork
 
-Поддерживаются `.c`, `.cc`, `.cpp`, `.cxx`, `.c++`, `.C`, `.h`, `.hpp`,
-`.hh`, `.hxx`, `.h++`, `.H`, `.ipp`, `.inl`, `.tcc`. Файлы `.c` разбираются
-как C; остальные, включая `.h`, — как C++. При обходе пропускаются
-`test_*`, `*_test`, `*_tests` и каталоги тестов.
+Supported extensions: `.c`, `.cc`, `.cpp`, `.cxx`, `.c++`, `.C`, `.h`, `.hpp`,
+`.hh`, `.hxx`, `.h++`, `.H`, `.ipp`, `.inl`, `.tcc`. `.c` files are parsed
+as C; all others, including `.h`, are parsed as C++. The walk skips
+`test_*`, `*_test`, `*_tests` and test directories.
 
-Сравниваются определения функций и методов, в том числе встроенные
-в заголовки, конструкторы, операторы и шаблонные определения. Объявления
-без тела не сравниваются. Лямбды и локальные классы остаются частью
-окружающей функции. Имена переменных и значения литералов нормализуются;
-имена вызываемых функций и методов, операторы и структура сохраняются.
-Кандидаты C сравниваются только с C, а C++ — только с C++.
+The tool compares function and method definitions, including those inline
+in headers, constructors, operators and template definitions. Declarations
+without a body are not compared. Lambdas and local classes remain part of
+the enclosing function. Variable names and literal values are normalized;
+names of called functions and methods, operators and structure are preserved.
+C candidates are compared only with C, and C++ only with C++.
 
 ```bash
 ./dryer --root /path/to/project src include
 ./dryer --root /path/to/project --threshold 0.8 src include
 ```
 
-Компилятор и сборка не требуются. Препроцессор не выполняется; функции,
-целиком создаваемые макросами, могут не попасть в сравнение.
+No compiler or build is required. The preprocessor is not run, so functions
+generated entirely by macros may be missed by the comparison.
 
 ```bash
 .venv/bin/python -m pytest -q tests/test_c_cpp.py

@@ -144,7 +144,7 @@ def _rust_nodes(data: bytes, root) -> list:
 
 
 def _native_nodes(data: bytes, root) -> list:
-    """Только определения; лямбды и локальные классы остаются внутри функции."""
+    """Definitions only; lambdas and local classes stay inside the function."""
 
     found = []
     stack = [root]
